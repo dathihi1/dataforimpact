@@ -1,1 +1,1 @@
-*.csv filter=lfs diff=lfs merge=lfs -text
+# Git LFS disabled for csv files to avoid Streamlit deploy issues
