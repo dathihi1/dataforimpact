@@ -1,7 +1,6 @@
 # 404_Not_Found
 
-## Customer Risk, Segmentation, and Recommendation Analytics for Online Retail
-
+## USER BEHAVIOR PREDICTION
 This repository contains an end-to-end analytics workflow for identifying at-risk customers, segmenting customer behavior, and generating business-facing recommendation strategies from online retail transaction data.
 
 The current implementation is strongest in three areas:
