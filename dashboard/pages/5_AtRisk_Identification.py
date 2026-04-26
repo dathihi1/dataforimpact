@@ -16,19 +16,35 @@ import plotly.graph_objects as go
 
 from dashboard.utils.data_loader import load_customer_360
 from dashboard.components.metrics import (
-    metric_row, inject_custom_css, insight_box, warning_box,
+    metric_row, inject_custom_css, inject_sidebar_brand, insight_box, warning_box,
     danger_box, section_header,
 )
-from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS
+from dashboard.components.filters import business_model_filter
+from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS, BUSINESS_MODEL_COLORS
 
 st.set_page_config(page_title="At-Risk Identification", page_icon="📊", layout="wide")
 inject_custom_css()
+inject_sidebar_brand()
 
 st.markdown("# At-Risk Customer Identification")
-st.caption("Nhận diện & phân loại khách hàng có nguy cơ rời bỏ bằng ML + Rule-based scoring")
+st.caption("Phát hiện khách hàng có nguy cơ rời bỏ: kết hợp ML + Rule-based")
 
-# ── Data ─────────────────────────────────────────────────────────
+st.markdown(
+    "Trong ngành thương mại điện tử, tỷ lệ churn trung bình lên đến 70–80% mỗi năm — "
+    "nghĩa là cứ 10 khách hàng thì có 7–8 người không quay lại trong năm sau. "
+    "Nhưng không phải tất cả đều rời bỏ vào cùng một lúc: có những dấu hiệu báo trước. "
+    "Mô hình Random Forest được huấn luyện để nhận diện những dấu hiệu đó từ hành vi RFM và chu kỳ mua — "
+    "trong khi hệ thống rule-based đảm bảo không bỏ sót các trường hợp rõ ràng mà mô hình có thể bỏ qua. "
+    "Kết hợp cả hai là cách tiếp cận được Sun và cộng sự (2023) chứng minh cho độ phủ cao nhất."
+)
+
+# ── Data ─────────────────────────────────────────────────────────────
 df = load_customer_360()
+
+# ── Sidebar Filters ────────────────────────────────────────────────
+with st.sidebar:
+    st.subheader("Bộ lọc")
+    df = business_model_filter(df, key="ar_bm")
 
 # ══════════════════════════════════════════════════════════════════
 #  At-Risk Overview KPIs
@@ -72,8 +88,7 @@ insight_box(
     f"(Recall-optimized). Song song đó, hệ thống rule-based phát hiện "
     f"<strong>{at_risk_rule:,}</strong> khách At Risk và <strong>{watchlist:,}</strong> "
     f"khách Watchlist dựa trên 6 tiêu chí hành vi.",
-    ref="Benchmark ngành TMĐT: Tỷ lệ churn trung bình 70–80%/năm (Statista, 2023). "
-    "Kết hợp ML + Rule-based giúp tăng độ phủ nhận diện (ensemble approach)."
+    ref="<a href='https://www.statista.com/statistics/816735/customer-churn-rate-by-industry-us/' target='_blank'>Statista (2023)</a>: Tỷ lệ churn trung bình TMĐT 70–80%/năm. Kết hợp ML + Rule-based giúp tăng độ phủ nhận diện (ensemble approach)."
 )
 
 st.divider()
@@ -181,8 +196,7 @@ insight_box(
     "Nhóm <strong>Lost</strong> và <strong>Hibernating</strong> có tỷ lệ churn cao nhất — "
     "đây là nhóm ưu tiên cho chiến dịch win-back. Ngược lại, nhóm <strong>Champions</strong> "
     "có tỷ lệ churn thấp nhất — cần loyalty programs để duy trì.",
-    ref="Pareto Principle trong CRM: 20% khách hàng tạo 80% doanh thu — "
-    "ưu tiên giữ chân nhóm Champions/Loyal trước."
+    ref="<a href='https://hbr.org/2014/10/the-value-of-keeping-the-right-customers' target='_blank'>HBR / Pareto Principle trong CRM</a>: 20% khách hàng tạo 80% doanh thu — ưu tiên giữ chân nhóm Champions/Loyal trước."
 )
 
 st.divider()
@@ -241,3 +255,79 @@ display_cols = [
 ]
 available = [c for c in display_cols if c in at_risk_df.columns]
 st.dataframe(at_risk_df[available], use_container_width=True, height=450)
+
+# ══════════════════════════════════════════════════════════════════
+#  B2B vs B2C Churn Comparison
+# ══════════════════════════════════════════════════════════════════
+if "customer_model" in df.columns:
+    st.divider()
+    section_header("Churn theo B2B vs B2C")
+
+    bm_churn = (
+        df.groupby("customer_model", as_index=False)
+        .agg(
+            total=("Customer ID", "nunique"),
+            churn_count=("churn_predicted", "sum"),
+            avg_churn_prob=("churn_probability", "mean"),
+        )
+    )
+    bm_churn["churn_rate"] = bm_churn["churn_count"] / bm_churn["total"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = go.Figure(data=[go.Bar(
+            x=bm_churn["customer_model"],
+            y=bm_churn["churn_rate"],
+            marker_color=[BUSINESS_MODEL_COLORS.get(m, "#999") for m in bm_churn["customer_model"]],
+            text=[f"{v:.1%}" for v in bm_churn["churn_rate"]],
+            textposition="auto",
+        )])
+        fig.update_layout(
+            title="Tỷ lệ Churn: B2B vs B2C",
+            height=380, template="plotly_white",
+            yaxis=dict(tickformat=".0%"),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        bm_churn_display = bm_churn.copy()
+        bm_churn_display.columns = ["Loại KH", "Tổng KH", "Churn KH", "Churn Prob TB", "Churn Rate"]
+        st.dataframe(
+            bm_churn_display.style.format({
+                "Churn Prob TB": "{:.2%}",
+                "Churn Rate": "{:.2%}",
+            }),
+            use_container_width=True,
+        )
+
+    insight_box(
+        "So sánh tỷ lệ churn giữa B2B và B2C giúp xác định nhóm nào cần ưu tiên chiến dịch retention. "
+        "B2B thường có giá trị cao hơn/khách — mất một khách B2B ảnh hưởng lớn hơn đến doanh thu. "
+        "<strong>Tại sao churn B2B thấp hơn?</strong> Vì B2B mua theo hợp đồng và switching cost cao, "
+        "trong khi B2C có nhiều lựa chọn thay thế hơn.",
+        ref="<a href='https://rivo.io/resources/customer-retention-statistics' target='_blank'>Rivo (2026)</a>: "
+        "B2B churn 5–10%/năm vs B2C e-commerce 70–80%/năm. "
+        "<a href='https://www.sciencedirect.com/science/article/abs/pii/S0019850113001600' target='_blank'>Tamaddoni et al. (2014)</a>: "
+        "B2B cần account-level signals để phân biệt churn thật sự với điều chỉnh hợp đồng.",
+    )
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════
+#  Research References
+# ══════════════════════════════════════════════════════════════════
+section_header("Tài liệu tham khảo & Nghiên cứu")
+
+st.markdown(
+    """
+    | # | Nguồn | Insight chính | Áp dụng trong trang này |
+    |---|-------|---------------|--------------------------|
+    | 1 | [Sun et al. (2023) — Heliyon / PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10570772/) | RFM + ML outperforms single-method cho noncontractual churn — kết hợp cho recall cao nhất | Pipeline Random Forest + RFM features + Rule-based ensemble |
+    | 2 | [Verbeke et al. (2012) — EJOR / ScienceDirect](https://www.sciencedirect.com/science/article/abs/pii/S0377221711007594) | Profit-driven churn: ưu tiên Recall thay vì Accuracy để tối đa ROI can thiệp | Recall-optimized threshold trong model |
+    | 3 | [Statista (2023)](https://www.statista.com/statistics/816735/customer-churn-rate-by-industry-us/) | Tỷ lệ churn TMĐT trung bình 70–80%/năm — cao nhất trong các ngành | Benchmark KPI churn rate tổng quan |
+    | 4 | [Rivo Industry Report (2026)](https://rivo.io/resources/customer-retention-statistics) | B2B churn 5–10%/năm vs B2C 70–80%/năm — khác nhau 7–10× | So sánh B2B vs B2C churn rate |
+    | 5 | [Tamaddoni et al. (2014) — Industrial Marketing Mgmt](https://www.sciencedirect.com/science/article/abs/pii/S0019850113001600) | B2B churn cần thêm account-level signals (volume, invoice count) | at_risk_rule_bucket với B2B-specific signals |
+    | 6 | [Reichheld (2001) — HBR](https://hbr.org/2014/10/the-value-of-keeping-the-right-customers) | Chi phí giữ chân thấp hơn 5–25× acquire mới — ROI intervention dương ngay cả win-back rate thấp | Justify việc đầu tư vào churn prevention |
+    """
+)

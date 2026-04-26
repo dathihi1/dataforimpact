@@ -14,16 +14,25 @@ import plotly.express as px
 
 from dashboard.utils.data_loader import load_customer_360, load_product_stats
 from dashboard.components.metrics import (
-    metric_row, inject_custom_css, insight_box, success_box,
+    metric_row, inject_custom_css, inject_sidebar_brand, insight_box, success_box,
     section_header,
 )
 from dashboard.utils.config import SEGMENT_COLORS
 
 st.set_page_config(page_title="Product Recommendation", page_icon="📊", layout="wide")
 inject_custom_css()
+inject_sidebar_brand()
 
 st.markdown("# Product Recommendation")
 st.caption("Hồ sơ mua sắm cá nhân, nhóm khách hàng tương đồng, gợi ý cross-sell/up-sell")
+
+st.markdown(
+    "Trước khi lo chuyện giữ chân, có một cơ hội thường bị bỏ qua: tăng giá trị từ những khách đang active. "
+    "McKinsey ước tính 35% doanh thu của Amazon đến từ gợi ý sản phẩm — không phải quảng cáo tìm khách mới. "
+    "Lý do đơn giản: khách hàng đã mua một lần sẵn sàng mua lần hai nếu được gợi ý đúng sản phẩm, đúng lúc. "
+    "Trang này cho phép tra cứu hồ sơ từng khách hàng, xem nhóm tương đồng của họ, "
+    "và xác định sản phẩm phù hợp để đề xuất — từ funnel giá rẻ thu hút quay lại đến sản phẩm cao cấp cho nhóm VIP."
+)
 
 # ── Data ─────────────────────────────────────────────────────────
 df = load_customer_360()
@@ -120,7 +129,23 @@ section_header("Nhóm khách hàng tương đồng (Lookalike)")
 
 if selected_id:
     cust_segment = cust.get("rfm_segment", None)
-    if cust_segment:
+    # Fallback: dùng churn_risk_index bracket nếu không có rfm_segment
+    if not cust_segment or str(cust_segment) in ("", "nan", "None"):
+        st.info(
+            "Khách hàng này chưa có RFM segment. "
+            "Hiển thị nhóm tương đồng theo Churn Risk."
+        )
+        risk = float(cust.get("churn_risk_index", 0))
+        lookalikes = (
+            df[
+                (df["churn_risk_index"].between(max(0, risk - 0.1), min(1, risk + 0.1)))
+                & (df["Customer ID"] != selected_id)
+            ]
+            .sort_values("customer_value_score", ascending=False)
+            .head(15)
+        )
+        chart_title = f"Lookalike Group (Churn Risk ≈{risk:.2f}) — Value vs Churn Risk"
+    else:
         lookalikes = (
             df[
                 (df["rfm_segment"] == cust_segment)
@@ -129,50 +154,70 @@ if selected_id:
             .sort_values("customer_value_score", ascending=False)
             .head(15)
         )
+        chart_title = f"Lookalike Group: {cust_segment} — Value vs Churn Risk"
 
-        if len(lookalikes) > 0:
-            st.markdown(
-                f"Hiển thị **{len(lookalikes)}** khách hàng cùng segment "
-                f"**{cust_segment}**, sắp xếp theo Customer Value Score."
-            )
+    if len(lookalikes) > 0:
+        st.markdown(
+            f"Hiển thị **{len(lookalikes)}** khách hàng tương đồng, "
+            "sắp xếp theo Customer Value Score."
+        )
 
-            display_cols = [
-                "Customer ID", "rfm_segment", "customer_value_score",
-                "churn_probability", "frequency_90d", "monetary_90d",
-                "recency_days", "loyalty_score",
-            ]
-            available = [c for c in display_cols if c in lookalikes.columns]
-            st.dataframe(
-                lookalikes[available].style.format({
-                    "customer_value_score": "{:.4f}",
-                    "churn_probability": "{:.2%}",
-                    "monetary_90d": "£{:,.2f}",
-                    "loyalty_score": "{:.4f}",
-                }),
-                use_container_width=True,
-                height=400,
-            )
+        display_cols = [
+            "Customer ID", "rfm_segment", "customer_value_score",
+            "churn_probability", "frequency_90d", "monetary_90d",
+            "recency_days", "loyalty_score",
+        ]
+        available = [c for c in display_cols if c in lookalikes.columns]
+        st.dataframe(
+            lookalikes[available].style.format({
+                "customer_value_score": "{:.4f}",
+                "churn_probability": "{:.2%}",
+                "monetary_90d": "£{:,.2f}",
+                "loyalty_score": "{:.4f}",
+            }),
+            use_container_width=True,
+            height=350,
+        )
 
-            fig = px.scatter(
-                lookalikes,
-                x="customer_value_score",
-                y="churn_probability",
-                size="monetary_90d",
-                color="churn_probability",
-                color_continuous_scale="RdYlGn_r",
-                hover_data=["Customer ID", "frequency_90d"],
-                title=f"Lookalike Group: {cust_segment} — Value vs Churn Risk",
-            )
-            fig.update_layout(
-                height=400, template="plotly_white",
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#334155"),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Không có khách hàng tương đồng khác trong segment này.")
+        # Clamp size: khách inactive (monetary=0) vẫn hiển thị bubble nhỏ
+        plot_df = lookalikes.copy()
+        min_size = max(float(plot_df["monetary_90d"].quantile(0.25)), 1.0)
+        plot_df["_bubble_size"] = plot_df["monetary_90d"].clip(lower=min_size)
+
+        fig = px.scatter(
+            plot_df,
+            x="customer_value_score",
+            y="churn_probability",
+            size="_bubble_size",
+            color="churn_probability",
+            color_continuous_scale="RdYlGn_r",
+            hover_data={"Customer ID": True, "monetary_90d": ":.2f",
+                        "recency_days": True, "_bubble_size": False},
+            title=chart_title,
+            labels={
+                "customer_value_score": "Customer Value Score",
+                "churn_probability": "Churn Probability",
+                "monetary_90d": "Revenue 90d (£)",
+            },
+        )
+        # Highlight selected customer
+        fig.add_scatter(
+            x=[float(cust.get("customer_value_score", 0))],
+            y=[float(cust.get("churn_probability", 0))],
+            mode="markers",
+            marker=dict(size=16, color="#6366f1", symbol="star",
+                        line=dict(color="white", width=2)),
+            name="Khách hàng đang chọn",
+            showlegend=True,
+        )
+        fig.update_layout(
+            height=420, template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#334155"),
+        )
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Không có thông tin segment cho khách hàng này.")
+        st.info("Không tìm thấy khách hàng tương đồng. Thử chọn khách hàng khác.")
 
 st.divider()
 
@@ -216,6 +261,25 @@ insight_box(
     "Chiến lược <strong>Cross-sell</strong> tăng giá trị giỏ hàng bằng cách gợi ý "
     "sản phẩm bổ sung, trong khi <strong>Up-sell</strong> khuyến khích khách hàng "
     "chọn phiên bản cao cấp hơn. Kết hợp cả hai có thể tăng 10–30% AOV.",
-    ref="McKinsey: Cross-sell/up-sell đóng góp 35% doanh thu Amazon; "
-    "Forrester Research: Product recommendations tăng 10–30% conversion rate."
+    ref="<a href='https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/how-retailers-can-keep-up-with-consumers' target='_blank'>McKinsey</a>: Cross-sell/up-sell đóng góp 35% doanh thu Amazon. "
+    "<a href='https://www.forrester.com/report/the-business-impact-of-product-recommendations/RES136135' target='_blank'>Forrester Research</a>: Product recommendations tăng 10–30% conversion rate."
+)
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════
+#  Research References
+# ══════════════════════════════════════════════════════════════════
+section_header("Tài liệu tham khảo & Nghiên cứu")
+
+st.markdown(
+    """
+    | # | Nguồn | Insight chính | Áp dụng trong trang này |
+    |---|-------|---------------|--------------------------|
+    | 1 | [McKinsey — How Retailers Keep Up](https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/how-retailers-can-keep-up-with-consumers) | 35% doanh thu Amazon đến từ product recommendations | Cross-sell / Up-sell funnel |
+    | 2 | [Forrester Research — Product Recommendations](https://www.forrester.com/report/the-business-impact-of-product-recommendations/RES136135) | Gợi ý đúng sản phẩm tăng 10–30% conversion rate | Funnel products và upsell scoring |
+    | 3 | [Peter Fader — Wharton (Customer Centricity)](https://marketing.wharton.upenn.edu/profile/faderp/) | Ưu tiên cross-sell cho high-CLV customers — không phải tất cả khách đều đáng đầu tư như nhau | Customer Value Score trong lookalike |
+    | 4 | [Lemon & Verhoef (2016) — Journal of Marketing](https://journals.sagepub.com/doi/10.1509/jm.15.0420) | Post-purchase experience ảnh hưởng trực tiếp tới retention và CLV | Hồ sơ khách hàng: cycle metrics và loyalty score |
+    | 5 | [InMobi (2023) — Personalization Report](https://www.inmobi.com/resources/reports/personalization) | Personalized recommendations tăng 3× conversion so với generic | Lookalike group suggestion theo segment |
+    """
 )

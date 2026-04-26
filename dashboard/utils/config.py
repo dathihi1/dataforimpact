@@ -51,6 +51,24 @@ SEGMENT_COLORS = {
     "Low Risk":              "#22c55e",
 }
 
+# ── Business model colour map ─────────────────────────────────────
+BUSINESS_MODEL_COLORS = {
+    "B2B / Account-like":  "#8b5cf6",   # violet
+    "B2C / Consumer-like": "#3b82f6",   # blue
+}
+
+BEHAVIOR_SEGMENT_COLORS = {
+    "Key Account / Strategic":    "#7c3aed",
+    "Bulk / Wholesale":           "#a78bfa",
+    "Transactional Account":      "#c4b5fd",
+    "At Risk Account":            "#f97316",
+    "VIP / Loyal":                "#22c55e",
+    "Core Active":                "#06b6d4",
+    "Explorer / Cross-sell Ready":"#8b5cf6",
+    "One-time / Occasional":      "#94a3b8",
+    "At Risk / Churned":          "#ef4444",
+}
+
 # ── Priority colour map ─────────────────────────────────────────
 PRIORITY_COLORS = {
     "P1 - Urgent Win-back":   "#ef4444",

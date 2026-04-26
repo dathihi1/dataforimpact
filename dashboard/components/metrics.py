@@ -102,10 +102,75 @@ def inject_custom_css() -> None:
 
         /* ── DataFrames ──────────────────────────────────────── */
         .stDataFrame { border-radius: 8px; overflow: hidden; }
+
+        /* ── Research Reference Box ─────────────────────────── */
+        .research-ref-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #6366f1;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin: 12px 0;
+        }
+        .research-ref-box .ref-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #6366f1;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .research-ref-box .ref-item {
+            font-size: 0.82rem;
+            color: #475569;
+            padding: 4px 0;
+            border-bottom: 1px dotted #e2e8f0;
+            line-height: 1.5;
+        }
+        .research-ref-box .ref-item:last-child { border-bottom: none; }
+        .research-ref-box .ref-item strong { color: #3730a3; }
+
+        /* ── Sidebar breadcrumb ──────────────────────────────── */
+        [data-testid="stSidebar"] .stMarkdown p {
+            font-size: 0.85rem;
+        }
+
+        /* ── Sidebar product branding ─────────────────────────────────────── */
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 4px 14px 4px;
+            margin-bottom: 4px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sidebar-brand .brand-name {
+            font-size: 1.18rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #1e293b;
+            line-height: 1.1;
+        }
+        .sidebar-brand .brand-name span {
+            color: #3b82f6;
+        }
+        .sidebar-brand .brand-tagline {
+            font-size: 0.68rem;
+            color: #94a3b8;
+            letter-spacing: 0.3px;
+            margin-top: 1px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def inject_sidebar_brand() -> None:
+    """Render RetentIQ product branding at top of sidebar.
+    Note: Handled centrally in app.py to appear above navigation.
+    """
+    pass
 
 
 def insight_box(text: str, ref: str = "") -> None:
@@ -127,6 +192,29 @@ def danger_box(text: str) -> None:
 def success_box(text: str) -> None:
     """Render a styled success callout box."""
     st.markdown(f'<div class="success-box">{text}</div>', unsafe_allow_html=True)
+
+
+def research_ref_box(title: str, refs: list[tuple[str, str]]) -> None:
+    """Render a styled research references box.
+
+    Parameters
+    ----------
+    title : str
+        Section title shown above the references.
+    refs : list[tuple[str, str]]
+        Each tuple is (citation_label, insight_text).
+    """
+    items_html = "".join(
+        f'<div class="ref-item"><strong>{label}:</strong> {text}</div>'
+        for label, text in refs
+    )
+    st.markdown(
+        f'<div class="research-ref-box">'
+        f'<div class="ref-title">{title}</div>'
+        f'{items_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def section_header(text: str) -> None:

@@ -290,6 +290,80 @@ def _build_winback_playbook(
     return playbook.sort_values("churn_probability", ascending=False)
 
 
+# ── Helper: B2B/B2C classification (ported from notebook 06) ─────
+def _classify_b2b_b2c(customer_360: pd.DataFrame) -> pd.DataFrame:
+    """Classify customers as B2B/Account-like or B2C/Consumer-like and
+    assign behaviour segments within each group."""
+    df = customer_360.copy()
+
+    # Quantile thresholds for B2B signal detection
+    aov_q85 = df["avg_order_value_90d"].quantile(0.85)
+    monetary_q90 = df["monetary_90d"].quantile(0.90)
+    units_invoice_q85 = df["avg_units_per_invoice_90d"].quantile(0.85)
+    units_invoice_q90 = df["avg_units_per_invoice_90d"].quantile(0.90)
+    units_total_q90 = df["total_units_90d"].quantile(0.90)
+    products_q75 = df["distinct_products_90d"].quantile(0.75)
+    invoices_q80 = df["distinct_invoices_90d"].quantile(0.80)
+    value_q80 = df["customer_value_score"].quantile(0.80)
+    value_q85 = df["customer_value_score"].quantile(0.85)
+    loyalty_q75 = df["loyalty_score"].quantile(0.75)
+    churn_q75 = df["churn_risk_index"].quantile(0.75)
+    recency_q80 = df["recency_days"].quantile(0.80)
+
+    def _assign_customer_model(row: pd.Series) -> str:
+        b2b_signals = 0
+        if row["avg_units_per_invoice_90d"] >= units_invoice_q90:
+            b2b_signals += 1
+        if row["total_units_90d"] >= units_total_q90:
+            b2b_signals += 1
+        if row["avg_order_value_90d"] >= aov_q85:
+            b2b_signals += 1
+        if row["monetary_90d"] >= monetary_q90 and row["distinct_invoices_90d"] >= invoices_q80:
+            b2b_signals += 1
+        return "B2B / Account-like" if b2b_signals >= 2 else "B2C / Consumer-like"
+
+    def _assign_b2c_segment(row: pd.Series) -> str:
+        if (
+            row["customer_value_score"] >= value_q80
+            and row["loyalty_score"] >= loyalty_q75
+            and row["recency_days"] <= 30
+        ):
+            return "VIP / Loyal"
+        if row["frequency_90d"] <= 1 and row["n_unique_days"] <= 1:
+            return "One-time / Occasional"
+        if row["churn_risk_index"] >= churn_q75 or row["rfm_segment"] in {
+            "At Risk", "Can't Lose Them", "Lost", "Hibernating"
+        }:
+            return "At Risk / Churned"
+        if row["distinct_products_90d"] >= products_q75 and row["frequency_90d"] >= 2:
+            return "Explorer / Cross-sell Ready"
+        return "Core Active"
+
+    def _assign_b2b_segment(row: pd.Series) -> str:
+        if (
+            row["customer_value_score"] >= value_q85
+            and row["monetary_90d"] >= monetary_q90
+            and row["distinct_invoices_90d"] >= invoices_q80
+        ):
+            return "Key Account / Strategic"
+        if row["avg_units_per_invoice_90d"] >= units_invoice_q85 or row["total_units_90d"] >= units_total_q90:
+            return "Bulk / Wholesale"
+        if row["churn_risk_index"] >= churn_q75 or row["recency_days"] >= recency_q80:
+            return "At Risk Account"
+        return "Transactional Account"
+
+    df["customer_model"] = df.apply(_assign_customer_model, axis=1)
+    df["behavior_segment"] = df.apply(
+        lambda row: (
+            _assign_b2b_segment(row)
+            if row["customer_model"] == "B2B / Account-like"
+            else _assign_b2c_segment(row)
+        ),
+        axis=1,
+    )
+    return df
+
+
 # ══════════════════════════════════════════════════════════════════
 #  MAIN PIPELINE
 # ══════════════════════════════════════════════════════════════════
@@ -303,7 +377,7 @@ def run_pipeline() -> None:
     print("=" * 60)
 
     # ── 1. Load & validate ────────────────────────────────────────
-    print("\n[1/7] Loading cleaned data …")
+    print("\n[1/8] Loading cleaned data …")
     raw_df = pd.read_csv(CLEANED_PATH, parse_dates=["InvoiceDate"])
     contract = run_data_contract_checks(raw_df)
     print(f"   Rows: {contract['rows']:,}  Columns: {contract['columns']}")
@@ -314,7 +388,7 @@ def run_pipeline() -> None:
     print(f"   Snapshot: {snapshot_date}")
 
     # ── 2. Build features ─────────────────────────────────────────
-    print("\n[2/7] Building churn & composite features …")
+    print("\n[2/8] Building churn & composite features …")
     churn_features = build_churn_features(
         raw_df, snapshot_date=snapshot_date, inactivity_days=INACTIVITY_DAYS
     )
@@ -322,7 +396,7 @@ def run_pipeline() -> None:
     print(f"   Customer feature table: {composite_features.shape}")
 
     # ── 3. Build cycle features ───────────────────────────────────
-    print("\n[3/7] Building cycle-based features …")
+    print("\n[3/8] Building cycle-based features …")
     sales_df = raw_df.loc[raw_df["Quantity"] > 0].copy()
     history_df = sales_df.loc[sales_df["InvoiceDate"] <= snapshot_date].copy()
     cycle_features = _build_cycle_features(history_df, snapshot_date)
@@ -363,7 +437,7 @@ def run_pipeline() -> None:
     print(f"   Model-ready table: {model_df.shape}")
 
     # ── 4. Train best model (Random Forest) ───────────────────────
-    print("\n[4/7] Training Random Forest churn model …")
+    print("\n[4/8] Training Random Forest churn model …")
     base_numeric = [
         "recency_days", "frequency_90d", "monetary_90d", "avg_order_value_90d",
         "return_rate_90d", "tenure_days", "n_unique_days", "avg_days_between_orders",
@@ -445,7 +519,7 @@ def run_pipeline() -> None:
     model_df["churn_predicted"] = (all_prob >= best_threshold).astype(int)
 
     # ── 5. Build behavior aggregates ──────────────────────────────
-    print("\n[5/7] Building behavior aggregates …")
+    print("\n[5/8] Building behavior aggregates …")
     window_start = snapshot_date - pd.Timedelta(days=89)
     sales_history = sales_df.loc[
         (sales_df["InvoiceDate"] >= window_start)
@@ -488,8 +562,15 @@ def run_pipeline() -> None:
     customer_360[fill_zero] = customer_360[fill_zero].fillna(0)
     customer_360["latest_country"] = customer_360["latest_country"].fillna("Unknown")
 
+    # ── 5b. Classify B2B / B2C ─────────────────────────────────────
+    print("\n[5b/8] Classifying B2B / B2C …")
+    customer_360 = _classify_b2b_b2c(customer_360)
+    b2b_count = int((customer_360["customer_model"] == "B2B / Account-like").sum())
+    b2c_count = int((customer_360["customer_model"] == "B2C / Consumer-like").sum())
+    print(f"   B2B: {b2b_count}  B2C: {b2c_count}")
+
     # ── 6. Build time-series revenue ──────────────────────────────
-    print("\n[6/7] Building time-series data …")
+    print("\n[6/8] Building time-series data …")
     monthly_revenue = (
         sales_df.assign(month=sales_df["InvoiceDate"].dt.to_period("M"))
         .groupby("month")
@@ -517,8 +598,8 @@ def run_pipeline() -> None:
         .head(50)
     )
 
-    # ── 7. Build win-back playbook ────────────────────────────────
-    print("\n[7/7] Building win-back playbook …")
+    # ── 8. Build win-back playbook ────────────────────────────────
+    print("\n[8/8] Building win-back playbook …")
     winback = _build_winback_playbook(model_df, raw_df, snapshot_date)
 
     # ══════════════════════════════════════════════════════════════

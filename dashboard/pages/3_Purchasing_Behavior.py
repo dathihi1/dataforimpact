@@ -17,17 +17,27 @@ from dashboard.utils.data_loader import (
     load_customer_360, load_time_series, load_product_stats,
 )
 from dashboard.components.metrics import (
-    metric_row, inject_custom_css, insight_box, section_header,
+    metric_row, inject_custom_css, inject_sidebar_brand, insight_box, section_header,
 )
 from dashboard.components.charts import pie_chart
-from dashboard.components.filters import segment_filter
-from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS
+from dashboard.components.filters import segment_filter, business_model_filter, time_window_filter, resolve_window_metrics
+from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS, BUSINESS_MODEL_COLORS
 
 st.set_page_config(page_title="Purchasing Behavior", page_icon="📊", layout="wide")
 inject_custom_css()
+inject_sidebar_brand()
 
-st.markdown("# Purchasing Behavior Analytics")
-st.caption("Xu hướng mua sắm, danh mục sản phẩm, và phân khúc khách hàng")
+st.markdown("# Purchasing Behavior")
+st.caption("Phân tích hành vi mua sắm: xu hướng doanh thu, AOV, sản phẩm bán chạy, phân khúc RFM")
+
+st.markdown(
+    "Phân tích hành vi mua sắm không chỉ là đếm đơn hàng — mà là hiểu nhịp điệu chi tiêu của khách hàng. "
+    "Bult & Wansbeek đã chứng minh từ những năm 90 rằng Recency — tức là lần mua gần nhất — "
+    "là dấu hiệu đáng tin cậy nhất để dự đoán ai sẽ quay lại. "
+    "Khách mua tuần trước khác hoàn toàn với khách mua 3 tháng trước, dù doanh thu của họ giống nhau. "
+    "Trang này đi vào chi tiết: doanh thu biến động theo thời gian ra sao, sản phẩm nào đang kéo tăng trưởng, "
+    "và các phân khúc RFM đang phân bổ thế nào trong tổng thể khách hàng."
+)
 
 # ── Data ─────────────────────────────────────────────────────────
 df = load_customer_360()
@@ -37,7 +47,12 @@ products = load_product_stats()
 # ── Sidebar Filters ──────────────────────────────────────────────
 with st.sidebar:
     st.subheader("Bộ lọc")
+    window_days = time_window_filter(key="pb_tw")
+    df = business_model_filter(df, key="pb_bm")
     filtered_df = segment_filter(df, key="pb_seg")
+
+filtered_df = resolve_window_metrics(filtered_df, window_days)
+_window_label = f"{window_days}d"
 
 # ══════════════════════════════════════════════════════════════════
 #  KPIs
@@ -45,27 +60,31 @@ with st.sidebar:
 section_header("Tổng quan hành vi mua sắm")
 
 n_customers = int(filtered_df["Customer ID"].nunique())
-avg_aov = float(filtered_df["avg_order_value_90d"].mean())
-avg_freq = float(filtered_df["frequency_90d"].mean())
+avg_aov = float(filtered_df["w_aov"].mean())
+avg_freq = float(filtered_df["w_frequency"].mean())
+avg_revenue = float(filtered_df["w_monetary"].sum())
 avg_recency = float(filtered_df["recency_days"].mean())
 median_tenure = float(filtered_df["tenure_days"].median())
 
+if window_days != 90:
+    st.info(f"Hiển thị số liệu cho khoảng **{window_days} ngày** — {'dữ liệu chính xác' if window_days == 30 else 'ước tính từ dữ liệu 90 ngày'}")
+
 metric_row([
     {"label": "Khách hàng", "value": f"{n_customers:,}"},
-    {"label": "AOV trung bình", "value": f"£{avg_aov:.2f}"},
-    {"label": "Tần suất mua (90d)", "value": f"{avg_freq:.1f}"},
+    {"label": f"Doanh thu ({_window_label})", "value": f"£{avg_revenue:,.0f}"},
+    {"label": f"AOV ({_window_label})", "value": f"£{avg_aov:.2f}"},
+    {"label": f"Freq TB ({_window_label})", "value": f"{avg_freq:.1f}"},
     {"label": "Recency TB", "value": f"{avg_recency:.0f} ngày"},
     {"label": "Tenure TB", "value": f"{median_tenure:.0f} ngày"},
 ])
 
 insight_box(
-    f"Khách hàng trung bình mua <strong>{avg_freq:.1f} lần</strong> trong 90 ngày "
+    f"Khách hàng trung bình mua <strong>{avg_freq:.1f} lần</strong> trong <strong>{window_days} ngày</strong> "
     f"với AOV <strong>£{avg_aov:.2f}</strong>. Recency trung bình "
     f"<strong>{avg_recency:.0f} ngày</strong> cho thấy "
     + ("khoảng cách mua khá dài — cần theo dõi chặt chẽ nhóm này." if avg_recency > 60
        else "nhìn chung khách hàng vẫn hoạt động."),
-    ref="RFM Analysis (Bult & Wansbeek, 1995): Recency là yếu tố dự báo mạnh nhất "
-    "cho hành vi mua lại tương lai."
+    ref="<a href='https://link.springer.com/article/10.1023/A:1008008402697' target='_blank'>Bult & Wansbeek (1995) — Marketing Science</a>: Recency là yếu tố dự báo mạnh nhất cho hành vi mua lại. Khách mua gần nhất có xác suất quay lại cao nhất."
 )
 
 st.divider()
@@ -249,6 +268,87 @@ insight_box(
     "<strong>Frequency</strong> (mua thường xuyên?), <strong>Monetary</strong> (chi tiêu bao nhiêu?). "
     "Nhóm <strong>Champions</strong> và <strong>Loyal</strong> cần được giữ chân bằng loyalty programs, "
     "trong khi nhóm <strong>Lost</strong> và <strong>Hibernating</strong> cần chiến dịch win-back.",
-    ref="Peter Fader, \"Customer Centricity\" (Wharton): RFM là nền tảng cho mọi "
-    "chiến lược CRM data-driven."
+    ref="<a href='https://marketing.wharton.upenn.edu/profile/faderp/' target='_blank'>Peter Fader — Wharton Business School</a>: RFM là nền tảng của mọi chiến lược CRM data-driven. "
+    "Nhóm Champions và Loyal tạo phần lớn doanh thu — giữ chân nhóm này là ưu tiên số 1."
+)
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════
+#  B2B vs B2C Behavior Comparison
+# ══════════════════════════════════════════════════════════════════
+if "customer_model" in filtered_df.columns:
+    section_header("So sánh hành vi B2B vs B2C")
+
+    bm_behavior = (
+        filtered_df.groupby("customer_model", as_index=False)
+        .agg(
+            customers=("Customer ID", "nunique"),
+            avg_aov=("avg_order_value_90d", "mean"),
+            avg_frequency=("frequency_90d", "mean"),
+            avg_monetary=("monetary_90d", "mean"),
+            avg_recency=("recency_days", "mean"),
+            churn_rate=("churn_predicted", "mean"),
+        )
+    )
+    bm_behavior.columns = ["Loại KH", "Số KH", "AOV TB", "Freq TB", "Monetary TB", "Recency TB", "Churn Rate"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        metrics_to_compare = ["AOV TB", "Monetary TB"]
+        fig = go.Figure()
+        for _, row in bm_behavior.iterrows():
+            fig.add_trace(go.Bar(
+                name=row["Loại KH"],
+                x=metrics_to_compare,
+                y=[row["AOV TB"], row["Monetary TB"]],
+                marker_color=BUSINESS_MODEL_COLORS.get(row["Loại KH"], "#999"),
+            ))
+        fig.update_layout(
+            title="So sánh AOV & Monetary (£)",
+            barmode="group", height=380,
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.dataframe(
+            bm_behavior.style.format({
+                "AOV TB": "£{:,.2f}",
+                "Freq TB": "{:.1f}",
+                "Monetary TB": "£{:,.0f}",
+                "Recency TB": "{:.0f}",
+                "Churn Rate": "{:.1%}",
+            }),
+            use_container_width=True,
+        )
+
+    insight_box(
+        "B2B (Account-like) thường có <strong>AOV</strong> và <strong>Monetary</strong> cao hơn nhiều so với B2C, "
+        "nhưng số lượng ít hơn. Chiến lược retention cần được tách riêng: B2B ưu tiên account management, "
+        "B2C ưu tiên loyalty programs và cross-sell.",
+        ref="<a href='https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/the-value-of-getting-personalization-right' target='_blank'>McKinsey Digital (2022)</a>: "
+        "Tách biệt chiến lược B2B/B2C tăng 15–25% hiệu quả retention campaign. "
+        "<a href='https://rivo.io/resources/customer-retention-statistics' target='_blank'>Rivo (2026)</a>: B2B retention 82–90%, B2C 74%.",
+    )
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════
+#  Research References
+# ══════════════════════════════════════════════════════════════════
+section_header("Tài liệu tham khảo & Nghiên cứu")
+
+st.markdown(
+    """
+    | # | Nguồn | Insight chính | Áp dụng trong trang này |
+    |---|-------|---------------|--------------------------|
+    | 1 | [Bult & Wansbeek (1995) — Marketing Science](https://link.springer.com/article/10.1023/A:1008008402697) | Recency là predictor mạnh nhất cho hành vi mua lại trong direct marketing | KPI Recency TB và phân tích recency distribution |
+    | 2 | [Peter Fader — Wharton (Customer Centricity)](https://marketing.wharton.upenn.edu/profile/faderp/) | RFM là nền tảng mọi chiến lược CRM — không phải mọi khách đều có giá trị như nhau | RFM Treemap, phân khúc Champions/Lost/Loyal |
+    | 3 | [Lemon & Verhoef (2016) — Journal of Marketing](https://journals.sagepub.com/doi/10.1509/jm.15.0420) | Customer journey gồm pre-purchase → purchase → post-purchase ảnh hưởng đến loyalty | Revenue trend và hành vi mua theo thời gian |
+    | 4 | [McKinsey Digital (2022)](https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/the-value-of-getting-personalization-right) | Tách biệt B2B/B2C trong CRM analytics tăng 15–25% hiệu quả | So sánh AOV và Monetary B2B vs B2C |
+    | 5 | [Rivo Industry Report (2026)](https://rivo.io/resources/customer-retention-statistics) | B2B retention: 82–90%; B2C: 74% — hai nhóm cần chiến lược riêng | Insight box B2B vs B2C comparison |
+    | 6 | [Kumar & Reinartz (2016) — JAMS / Springer](https://link.springer.com/article/10.1007/s11747-016-0488-7) | Kết hợp RFM + CLV tối ưu hóa phân bổ ngân sách retention | Phân khúc RFM và customer value scoring |
+    """
 )

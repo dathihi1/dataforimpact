@@ -15,22 +15,40 @@ import plotly.graph_objects as go
 
 from dashboard.utils.data_loader import load_customer_360, load_time_series, load_model_metrics
 from dashboard.components.metrics import (
-    metric_row, inject_custom_css, insight_box, section_header,
+    metric_row, inject_custom_css, inject_sidebar_brand, insight_box, section_header,
 )
 from dashboard.components.charts import pie_chart
-from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS
+from dashboard.components.filters import time_window_filter, resolve_window_metrics
+from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS, BUSINESS_MODEL_COLORS
 
 st.set_page_config(page_title="Executive Overview", page_icon="📊", layout="wide")
 inject_custom_css()
+inject_sidebar_brand()
 
 # ── Header ───────────────────────────────────────────────────────
 st.markdown("# Executive Overview")
 st.caption("Tổng quan hiệu quả kinh doanh và sức khỏe tập khách hàng — Online Retail Dataset")
 
+st.markdown(
+    "Mọi chiến lược đúng đắn đều bắt đầu bằng việc nhìn thẳng vào số liệu — doanh thu đang vận động thế nào, "
+    "bao nhiêu khách hàng đang có dấu hiệu rời bỏ, và tỷ lệ giữ chân nói lên điều gì. "
+    "Reichheld — Bain & Company chỉ ra rằng chỉ cần cải thiện 5% retention, lợi nhuận có thể tăng 25 đến 95%. "
+    "Con số này nghe lạ nhưng có lý do rất cụ thể: khách hàng cũ chi tiêu nhiều hơn, rẻ hơn để phục vụ, và dễ dự đoán hơn. "
+    "Trang tổng quan này đưa ra bức tranh toàn cảnh trước khi chúng ta đi sâu vào từng nhóm khách hàng."
+)
+
 # ── Data ─────────────────────────────────────────────────────────
 df = load_customer_360()
 ts = load_time_series()
 metrics = load_model_metrics()
+
+# ── Sidebar: Time window ────────────────────────────────────────
+with st.sidebar:
+    st.subheader("Bộ lọc")
+    window_days = time_window_filter(key="eo_tw")
+
+df = resolve_window_metrics(df, window_days)
+_window_label = f"{window_days}d"
 
 # ══════════════════════════════════════════════════════════════════
 #  KPIs
@@ -38,29 +56,31 @@ metrics = load_model_metrics()
 section_header("Chỉ số KPIs tổng quan")
 
 total_customers = int(df["Customer ID"].nunique())
-total_revenue = float(df["monetary_90d"].sum())
-total_orders = int(df["frequency_90d"].sum())
+total_revenue = float(df["w_monetary"].sum())
+total_orders = int(df["w_frequency"].sum())
 avg_ltv = float(df["customer_value_score"].mean())
 churn_rate = float(df["churn_predicted"].mean())
 retention_rate = 1 - churn_rate
 avg_aov = total_revenue / total_orders if total_orders > 0 else 0
 
+if window_days != 90:
+    st.info(f"Hiển thị số liệu cho khoảng **{window_days} ngày** — {'dữ liệu chính xác' if window_days == 30 else 'ước tính từ dữ liệu 90 ngày'}")
+
 metric_row([
     {"label": "Tổng khách hàng", "value": f"{total_customers:,}"},
-    {"label": "Tổng đơn hàng (90d)", "value": f"{total_orders:,}"},
-    {"label": "Doanh thu (90d)", "value": f"£{total_revenue:,.0f}"},
+    {"label": f"Tổng đơn hàng ({_window_label})", "value": f"{total_orders:,}"},
+    {"label": f"Doanh thu ({_window_label})", "value": f"£{total_revenue:,.0f}"},
     {"label": "AOV", "value": f"£{avg_aov:,.2f}"},
     {"label": "Retention Rate", "value": f"{retention_rate:.1%}",
      "delta": f"-{churn_rate:.1%} churn", "delta_color": "inverse"},
 ])
 
 insight_box(
-    f"Trong 90 ngày gần nhất, doanh nghiệp phục vụ <strong>{total_customers:,}</strong> "
+    f"Trong <strong>{window_days} ngày</strong> gần nhất, doanh nghiệp phục vụ <strong>{total_customers:,}</strong> "
     f"khách hàng với doanh thu <strong>£{total_revenue:,.0f}</strong>. "
     f"Tỷ lệ giữ chân đạt <strong>{retention_rate:.1%}</strong>, "
     f"tương đương <strong>{churn_rate:.1%}</strong> khách hàng có nguy cơ rời bỏ.",
-    ref="Theo Bain & Company, tăng 5% tỷ lệ giữ chân có thể tăng 25–95% lợi nhuận "
-    "(Frederick Reichheld, \"Prescription for Cutting Costs\", Bain & Co.)."
+    ref="<a href='https://hbr.org/2014/10/the-value-of-keeping-the-right-customers' target='_blank'>Reichheld (2001) — Bain & Company / HBR</a>: Tăng 5% retention → +25–95% lợi nhuận. Chi phí giữ chân thấp hơn 5–25× so với tìm khách mới."
 )
 
 st.divider()
@@ -85,8 +105,7 @@ insight_box(
     f"Việc ưu tiên Recall thay vì Precision là chiến lược phù hợp vì chi phí bỏ sót "
     f"một khách hàng at-risk (false negative) cao hơn nhiều so với chi phí chăm sóc "
     f"nhầm một khách hàng ổn định (false positive).",
-    ref="Harvard Business Review: Chi phí thu hút khách hàng mới cao gấp 5–25 lần "
-    "so với giữ chân khách hàng hiện tại."
+    ref="<a href='https://hbr.org/2014/10/the-value-of-keeping-the-right-customers' target='_blank'>Harvard Business Review</a>: Chi phí thu hút khách hàng mới cao gấp 5–25 lần so với giữ chân khách hàng hiện tại."
 )
 
 st.divider()
@@ -132,6 +151,50 @@ with col2:
     )
     st.plotly_chart(fig, use_container_width=True)
 
+# ── B2B / B2C Split ──────────────────────────────────────────────
+if "customer_model" in df.columns:
+    section_header("Phân bố B2B / B2C")
+    col_b1, col_b2 = st.columns([2, 3])
+    with col_b1:
+        bm_counts = (
+            df.groupby("customer_model", as_index=False)
+            .agg(count=("Customer ID", "nunique"))
+        )
+        fig = pie_chart(
+            bm_counts, values="count", names="customer_model",
+            title="Tỷ lệ B2B vs B2C", color_map=BUSINESS_MODEL_COLORS,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    with col_b2:
+        bm_summary = (
+            df.groupby("customer_model", as_index=False)
+            .agg(
+                customers=("Customer ID", "nunique"),
+                avg_revenue=("monetary_90d", "mean"),
+                avg_frequency=("frequency_90d", "mean"),
+                avg_recency=("recency_days", "mean"),
+                churn_rate=("churn_predicted", "mean"),
+            )
+        )
+        bm_summary.columns = ["Loại KH", "Số KH", "Revenue TB (£)", "Freq TB", "Recency TB", "Churn Rate"]
+        st.dataframe(
+            bm_summary.style.format({
+                "Revenue TB (£)": "{:,.0f}",
+                "Freq TB": "{:.1f}",
+                "Recency TB": "{:.0f}",
+                "Churn Rate": "{:.1%}",
+            }),
+            use_container_width=True,
+        )
+    insight_box(
+        f"Hệ thống phân loại <strong>{int(bm_counts.loc[bm_counts['customer_model']=='B2B / Account-like', 'count'].sum())}</strong> "
+        f"khách B2B và <strong>{int(bm_counts.loc[bm_counts['customer_model']=='B2C / Consumer-like', 'count'].sum())}</strong> "
+        f"khách B2C. Hai nhóm này có hành vi mua sắm rất khác nhau — "
+        f"B2B mua số lượng lớn, tần suất cao; B2C mua lẻ, giá trị thấp hơn.",
+        ref="<a href='https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/the-value-of-getting-personalization-right' target='_blank'>McKinsey Digital</a>: Tách biệt B2B và B2C trong phân tích CRM giúp tăng 15–25% hiệu quả chiến dịch retention."
+    )
+    st.divider()
+
 rev_max_month = ts.loc[ts["revenue"].idxmax(), "month"]
 rev_min_month = ts.loc[ts["revenue"].idxmin(), "month"]
 insight_box(
@@ -139,8 +202,7 @@ insight_box(
     f"và thấp nhất vào <strong>{rev_min_month.strftime('%m/%Y')}</strong>. "
     f"Xu hướng sụt giảm cuối kỳ có thể phản ánh hiệu ứng mùa vụ (seasonality) "
     f"hoặc dấu hiệu churn gia tăng.",
-    ref="McKinsey: Phân tích xu hướng doanh thu kết hợp churn prediction giúp doanh nghiệp "
-    "can thiệp sớm 2–3 tháng trước khi mất khách hàng."
+    ref="<a href='https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/the-value-of-getting-personalization-right' target='_blank'>McKinsey (2022)</a>: Phân tích xu hướng doanh thu kết hợp churn prediction giúp can thiệp sớm 2–3 tháng trước khi mất khách hàng."
 )
 
 st.divider()
@@ -197,12 +259,13 @@ section_header("Bối cảnh & Nghiên cứu tham khảo")
 
 st.markdown(
     """
-    | Nguồn | Insight chính |
-    |-------|---------------|
-    | **Bain & Company** (Reichheld, 2001) | Tăng 5% retention → tăng 25–95% lợi nhuận |
-    | **Harvard Business Review** | Chi phí acquire khách mới = 5–25× chi phí retain |
-    | **McKinsey Digital** | ML-based churn prediction giảm 15–20% tỷ lệ rời bỏ |
-    | **Gartner** (2023) | 80% doanh thu tương lai đến từ 20% khách hàng hiện tại |
-    | **E-commerce benchmark** | Tỷ lệ churn trung bình ngành TMĐT: 70–80%/năm |
+    | # | Nguồn | Insight chính | Áp dụng trong trang này |
+    |---|-------|---------------|--------------------------|
+    | 1 | [Reichheld (2001) — Bain & Company / HBR](https://hbr.org/2014/10/the-value-of-keeping-the-right-customers) | Tăng 5% retention → +25–95% lợi nhuận | Justify tầm quan trọng của Retention Rate KPI |
+    | 2 | [Harvard Business Review](https://hbr.org/2014/10/the-value-of-keeping-the-right-customers) | Chi phí acquire khách mới = 5–25× chi phí retain | Lý do ưu tiên Recall trong mô hình churn |
+    | 3 | [Kumar & Reinartz (2016) — JAMS / Springer](https://link.springer.com/article/10.1007/s11747-016-0488-7) | RFM + CLV là framework CRM cốt lõi | Nền tảng cho segmentation và scoring |
+    | 4 | [Sun et al. (2023) — Heliyon / PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10570772/) | RFM + ML outperforms đơn lẻ cho noncontractual churn | Pipeline Random Forest + RFM features |
+    | 5 | [McKinsey Digital (2022)](https://www.mckinsey.com/capabilities/growth-marketing-and-sales/our-insights/the-value-of-getting-personalization-right) | ML-based churn prediction giảm 15–20% tỷ lệ rời bỏ | Validate model approach |
+    | 6 | [Statista (2023)](https://www.statista.com/statistics/816735/customer-churn-rate-by-industry-us/) | Tỷ lệ churn TMĐT trung bình: 70–80%/năm | Benchmark cho churn rate tổng quan |
     """
 )

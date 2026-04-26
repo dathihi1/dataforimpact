@@ -17,19 +17,37 @@ import plotly.graph_objects as go
 
 from dashboard.utils.data_loader import load_customer_360
 from dashboard.components.metrics import (
-    metric_row, inject_custom_css, insight_box, warning_box,
+    metric_row, inject_custom_css, inject_sidebar_brand, insight_box, warning_box,
     section_header,
 )
+from dashboard.components.filters import business_model_filter
 from dashboard.utils.config import SEGMENT_COLORS, CHART_COLORS
 
 st.set_page_config(page_title="At-Risk Deep Dive", page_icon="📊", layout="wide")
 inject_custom_css()
+inject_sidebar_brand()
 
 st.markdown("# At-Risk Behavior Deep Dive")
 st.caption("Mẫu hình hành vi đặc trưng của nhóm khách hàng có nguy cơ rời bỏ")
 
-# ── Data ─────────────────────────────────────────────────────────
+st.markdown(
+    "Biết ai sắp rời bỏ mới chỉ là nửa câu chuyện. Câu hỏi thực sự quan trọng hơn là: tại sao? "
+    "Gupta & Lehmann chỉ ra rằng giám sát chu kỳ mua — khoảng cách giữa các lần giao dịch — "
+    "là tín hiệu cảnh báo sớm đáng tin cậy hơn cả recency đơn lẻ. "
+    "Khi một khách hàng vẫn chưa mua dù đã vượt qua thời điểm họ thường mua, đó là lúc cần hành động — "
+    "không phải đợi đến khi họ chính thức ngừng mua. "
+    "Trang này đi vào hành vi cụ thể: tần suất giảm như thế nào, chi tiêu sụt giảm ra sao, "
+    "và nhóm at-risk khác nhóm ổn định ở điểm nào."
+)
+
+# ── Data ─────────────────────────────────────────────────────────────
 df = load_customer_360()
+
+# ── Sidebar Filters ────────────────────────────────────────────────
+with st.sidebar:
+    st.subheader("Bộ lọc")
+    df = business_model_filter(df, key="dd_bm")
+
 at_risk = df[df["churn_predicted"] == 1].copy()
 safe = df[df["churn_predicted"] == 0].copy()
 
@@ -83,8 +101,9 @@ insight_box(
     "Nhóm At-Risk có <strong>Recency cao hơn</strong> (mua từ lâu), "
     "<strong>Frequency thấp hơn</strong> (mua ít hơn), và "
     "<strong>Churn Risk Index cao hơn</strong> so với nhóm Safe. "
-    "Đây là mẫu hình cổ điển của churn: khách hàng dần rời xa trước khi rời bỏ hoàn toàn.",
-    ref="Kumar & Reinartz (2016): \"Customer Relationship Management\" — "
+    "Sự khác biệt này là cơ sở khoa học của việc dùng RFM làm features cho mô hình churn. "
+    "Đây là mẫu hình cổ điển: khách hàng dần rời xa trước khi rời bỏ hoàn toàn.",
+    ref="<a href='https://link.springer.com/article/10.1007/s11747-016-0488-7' target='_blank'>Kumar & Reinartz (2016) — JAMS</a>: "
     "3 tín hiệu mạnh nhất cho churn: tăng recency, giảm frequency, giảm monetary."
 )
 
@@ -192,8 +211,9 @@ insight_box(
     "Tỉ số <strong>Recency / Expected Gap > 1.5</strong> là ngưỡng \"cycle break\" — "
     "khách hàng đã vượt quá 50% thời gian mua kỳ vọng mà chưa quay lại. "
     "Đây là dấu hiệu mạnh nhất cho thấy khách hàng sắp rời bỏ.",
-    ref="Gupta & Lehmann (2005): \"Managing Customers as Investments\" — "
-    "Monitoring purchase cycles là phương pháp hiệu quả nhất cho early churn detection."
+    ref="<a href='https://www.hbs.edu/faculty/Pages/item.aspx?num=19162' target='_blank'>Gupta & Lehmann (2005) — Managing Customers as Investments</a>: "
+    "Giám sát purchase cycle là early warning tốt nhất, hiệu quả hơn recency đơn lẻ. "
+    "Cần can thiệp trong vòng 2 tuần sau khi vượt ngưỡng."
 )
 
 st.divider()
@@ -281,4 +301,23 @@ insight_box(
     "một yếu tố góp phần vào quyết định rời bỏ.",
     ref="Petersen & Kumar (2009): Tỷ lệ return cao liên quan chặt với churn; "
     "cải thiện trải nghiệm sản phẩm giảm 15% churn rate."
+)
+
+st.divider()
+
+# ══════════════════════════════════════════════════════════════════
+#  Research References
+# ══════════════════════════════════════════════════════════════════
+section_header("Tài liệu tham khảo & Nghiên cứu")
+
+st.markdown(
+    """
+    | # | Nguồn | Insight chính | Áp dụng trong trang này |
+    |---|-------|---------------|--------------------------|
+    | 1 | [Gupta & Lehmann (2005)](https://www.hbs.edu/faculty/Pages/item.aspx?num=19162) — *Managing Customers as Investments* | Purchase cycle monitoring là early warning tốt nhất | Cycle risk score + recency_vs_expected_gap |
+    | 2 | [Petersen & Kumar (2009)](https://journals.sagepub.com/doi/10.1509/jmkg.73.3.35) — *Journal of Marketing* | Return rate cao liên quan trực tiếp tới churn; giảm friction giảm 15% churn | Return rate distribution analysis |
+    | 3 | [Rivo Industry Report (2026)](https://rivo.io/resources/customer-retention-statistics) | B2B churn: 5–10%/năm; B2C e-commerce: 70–80%/năm — hai nhóm cần can thiệp khác nhau | B2B/B2C filter trong deep dive |
+    | 4 | [Sun et al. (2023)](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10570772/) — *Heliyon/PMC* | Frequency decline + recency gap là feature quan trọng nhất trong noncontractual churn | Spend/Frequency decline charts |
+    | 5 | [Tamaddoni et al. (2014)](https://www.sciencedirect.com/science/article/abs/pii/S0019850113001600) — *Industrial Marketing Management* | Predictive B2B churn model cần thêm account-level signals (volume, invoices) | cycle_risk_score dành riêng cho B2B |
+    """
 )

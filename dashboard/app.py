@@ -1,7 +1,7 @@
 """
-At-Risk Customer Dashboard
-===========================
-Main entry point for the Streamlit multi-page dashboard.
+At-Risk Customer Dashboard — 404_NotFound | Data for Impact 2026
+=================================================================
+Navigation controller.
 
 Usage:
     cd 404_Not_Found
@@ -10,147 +10,85 @@ Usage:
 import sys
 from pathlib import Path
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 import streamlit as st
+from dashboard.components.metrics import inject_custom_css
 
-st.set_page_config(
-    page_title="At-Risk Customer Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+# Inject global CSS
+inject_custom_css()
 
-# ── Custom CSS ───────────────────────────────────────────────────
-st.markdown(
+# ── Style the first nav item as brand header ─────────────────────
+st.sidebar.markdown(
     """
     <style>
-    .main .block-container { padding-top: 1rem; }
-    .hero-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin-bottom: 0;
+    /* Ẩn st.logo mặc định nếu còn sót */
+    [data-testid="stLogo"] { display: none !important; }
+
+    /* ── Style mục đầu tiên trong sidebar nav thành brand ── */
+    /* Container li */
+    [data-testid="stSidebarNav"] ul li:first-child {
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 14px !important;
+        margin-bottom: 8px !important;
     }
-    .hero-subtitle {
-        font-size: 1.05rem;
-        color: #64748b;
+    /* Link chính */
+    [data-testid="stSidebarNav"] ul li:first-child a {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.5px !important;
+        padding: 16px 16px 6px 16px !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        line-height: 1.2 !important;
+        background: linear-gradient(135deg, rgba(37,99,235,0.06), rgba(99,102,241,0.06)) !important;
+        border-radius: 10px !important;
+        border-left: 4px solid #3b82f6 !important;
+        transition: all 0.2s ease !important;
+    }
+    [data-testid="stSidebarNav"] ul li:first-child a:hover {
+        background: linear-gradient(135deg, rgba(37,99,235,0.12), rgba(99,102,241,0.12)) !important;
+        transform: translateX(2px);
+    }
+    /* Text bên trong — màu xanh đậm nổi bật */
+    [data-testid="stSidebarNav"] ul li:first-child a span,
+    [data-testid="stSidebarNav"] ul li:first-child a p {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        color: #2563eb !important;
+    }
+    /* Dòng subtitle "Data for Impact 2026" */
+    [data-testid="stSidebarNav"] ul li:first-child a::after {
+        content: "Data for Impact 2026";
+        display: block !important;
+        font-size: 0.72rem !important;
+        font-weight: 400 !important;
+        color: #94a3b8 !important;
+        letter-spacing: 0.3px;
         margin-top: 4px;
-    }
-    .nav-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 20px;
-        margin: 8px 0;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .nav-card:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    .nav-card h3 {
-        margin: 0 0 8px 0;
-        font-size: 1.05rem;
-        color: #1e293b;
-    }
-    .nav-card p {
-        margin: 0;
-        font-size: 0.88rem;
-        color: #64748b;
+        white-space: normal !important;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ── Hero ─────────────────────────────────────────────────────────
-st.markdown('<h1 class="hero-title">At-Risk Customer Dashboard</h1>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="hero-subtitle">Phân tích chuyên sâu khách hàng có nguy cơ rời bỏ — '
-    'Powered by Machine Learning & Data-driven Insights</p>',
-    unsafe_allow_html=True,
+pg = st.navigation(
+    [
+        st.Page("home_page.py", title="404_NotFound"),
+        st.Page("pages/1_Executive_Overview.py",    title="Executive Overview"),
+        st.Page("pages/2_B2B_B2C_Segmentation.py", title="B2B / B2C Segmentation"),
+        st.Page("pages/3_Purchasing_Behavior.py",   title="Purchasing Behavior"),
+        st.Page("pages/4_Product_Recommendation.py",title="Product Recommendation"),
+        st.Page("pages/5_AtRisk_Identification.py", title="At-Risk Identification"),
+        st.Page("pages/6_AtRisk_DeepDive.py",       title="At-Risk Deep Dive"),
+        st.Page("pages/7_Winback_Strategy.py",      title="Win-back Strategy"),
+    ]
 )
-st.markdown("---")
-
-# ── Navigation Cards ─────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>1. Executive Overview</h3>
-        <p>KPIs tổng quan, Retention Rate, phân bố khách hàng, hiệu quả kinh doanh</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>2. Purchasing Behavior</h3>
-        <p>Xu hướng doanh thu, AOV, Top Products, phân khúc RFM Segments</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-
-with col2:
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>3. Product Recommendation</h3>
-        <p>Hồ sơ khách hàng, Lookalike groups, Cross-sell/Up-sell scoring</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>4. At-Risk Identification</h3>
-        <p>Churn prediction, cảnh báo sớm, phân bố xác suất rời bỏ</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-
-with col3:
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>5. At-Risk Deep Dive</h3>
-        <p>Frequency/Spend decline, purchase gaps, return behavior</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '''<div class="nav-card">
-        <h3>6. Win-back Strategy</h3>
-        <p>Chiến dịch can thiệp, mức ưu tiên P1/P2/P3, ROI estimation</p>
-        </div>''',
-        unsafe_allow_html=True,
-    )
-
-st.markdown("---")
-
-# ── Project Info ─────────────────────────────────────────────────
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown(
-        """
-        ### Về dự án
-        - **Dự án**: 404_Not_Found — Data for Impact
-        - **Dữ liệu**: Online Retail Dataset (UCI ML Repository)
-        - **Model**: Random Forest (Business-value optimized, Calibrated)
-        - **Framework**: Streamlit + Plotly + scikit-learn
-        """
-    )
-
-with col2:
-    st.markdown(
-        """
-        ### Phương pháp
-        - **Feature Engineering**: RFM + Cycle-based + Composite scores
-        - **Segmentation**: Rule-based + K-Means clustering
-        - **Prediction**: Random Forest Classifier
-        - **Evaluation**: Accuracy, Precision, Recall, F1, ROC-AUC, PR-AUC, Brier
-        """
-    )
-
-st.caption("Sử dụng sidebar bên trái để điều hướng giữa các trang phân tích.")
+pg.run()
