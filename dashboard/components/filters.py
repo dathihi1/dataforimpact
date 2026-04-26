@@ -59,11 +59,13 @@ def resolve_window_metrics(df: pd.DataFrame, window_days: int) -> pd.DataFrame:
     để nhất quán đơn vị (``frequency_90d`` đếm line-items, không phải invoices).
 
     Logic:
-    - 30d  → ``spend_last30d`` / ``orders_last30d``          (chính xác)
-    - 60d  → ``spend_last30d + spend_prev60d * 0.5``         (xấp xỉ ~60d)
-              ``orders_last30d + orders_prev60d * 0.5``
-    - 90d  → ``monetary_90d`` / ``distinct_invoices_90d``    (chính xác)
-    - other→ scale tỷ lệ từ 90d × (window_days / 90)
+    - window <= 30d  → scale từ ``spend_last30d`` (chính xác với 30d, ước tính với <30d)
+    - 30d < window < 90d → ``spend_last30d + spend_prev60d * ((window-30)/60)`` (nội suy)
+    - 90d             → ``monetary_90d`` / ``distinct_invoices_90d``    (chính xác)
+    - window > 90d    → scale tỷ lệ từ 90d × (window_days / 90)
+
+    Ưu tiên dùng data bucket gần nhất để ``w_monetary > 0``
+    phản ánh đúng khách hàng active trong window đó.
 
     Cột trả về: ``w_monetary`` (£), ``w_frequency`` (distinct invoices),
     ``w_aov`` (£/invoice).
@@ -78,13 +80,15 @@ def resolve_window_metrics(df: pd.DataFrame, window_days: int) -> pd.DataFrame:
         out["w_monetary"] = out["monetary_90d"]
         out["w_frequency"] = out["distinct_invoices_90d"] if has_inv90 else out["monetary_90d"] * 0
 
-    elif window_days == 30 and has_30d:
-        out["w_monetary"] = out["spend_last30d"]
-        out["w_frequency"] = out["orders_last30d"]
+    elif window_days <= 30 and has_30d:
+        scale = window_days / 30.0
+        out["w_monetary"] = out["spend_last30d"] * scale
+        out["w_frequency"] = out["orders_last30d"] * scale
 
-    elif window_days == 60 and has_30d and has_prev:
-        out["w_monetary"] = out["spend_last30d"] + out["spend_prev60d"] * 0.5
-        out["w_frequency"] = out["orders_last30d"] + out["orders_prev60d"] * 0.5
+    elif window_days < 90 and has_30d and has_prev:
+        extra = (window_days - 30) / 60.0
+        out["w_monetary"] = out["spend_last30d"] + out["spend_prev60d"] * extra
+        out["w_frequency"] = out["orders_last30d"] + out["orders_prev60d"] * extra
 
     else:
         scale = window_days / 90.0
