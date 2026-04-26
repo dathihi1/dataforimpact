@@ -66,12 +66,16 @@ section_header("Tổng quan B2B vs B2C")
 b2b = df[df["customer_model"] == "B2B / Account-like"]
 b2c = df[df["customer_model"] == "B2C / Consumer-like"]
 
+_n_active = int((df["w_monetary"] > 0).sum())
+_n_b2b = int((b2b["w_monetary"] > 0).sum())
+_n_b2c = int((b2c["w_monetary"] > 0).sum())
+
 metric_row([
-    {"label": "Tổng khách hàng", "value": f"{len(df):,}"},
-    {"label": "B2B (Account-like)", "value": f"{len(b2b):,}",
-     "delta": f"{len(b2b)/len(df):.1%}"},
-    {"label": "B2C (Consumer-like)", "value": f"{len(b2c):,}",
-     "delta": f"{len(b2c)/len(df):.1%}"},
+    {"label": f"Khách hàng ({_window_label})", "value": f"{_n_active:,}"},
+    {"label": "B2B (Account-like)", "value": f"{_n_b2b:,}",
+     "delta": f"{_n_b2b/_n_active:.1%}" if _n_active else "N/A"},
+    {"label": "B2C (Consumer-like)", "value": f"{_n_b2c:,}",
+     "delta": f"{_n_b2c/_n_active:.1%}" if _n_active else "N/A"},
 ])
 
 st.divider()

@@ -55,7 +55,7 @@ _window_label = f"{window_days}d"
 # ══════════════════════════════════════════════════════════════════
 section_header("Chỉ số KPIs tổng quan")
 
-total_customers = int(df["Customer ID"].nunique())
+total_customers = int((df["w_monetary"] > 0).sum())
 total_revenue = float(df["w_monetary"].sum())
 total_orders = int(df["w_frequency"].sum())
 avg_ltv = float(df["customer_value_score"].mean())

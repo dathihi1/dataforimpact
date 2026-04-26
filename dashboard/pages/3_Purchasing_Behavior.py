@@ -59,7 +59,7 @@ _window_label = f"{window_days}d"
 # ══════════════════════════════════════════════════════════════════
 section_header("Tổng quan hành vi mua sắm")
 
-n_customers = int(filtered_df["Customer ID"].nunique())
+n_customers = int((filtered_df["w_monetary"] > 0).sum())
 avg_aov = float(filtered_df["w_aov"].mean())
 avg_freq = float(filtered_df["w_frequency"].mean())
 avg_revenue = float(filtered_df["w_monetary"].sum())
